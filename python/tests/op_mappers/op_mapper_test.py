@@ -98,6 +98,15 @@ class OpMapperTest(OpTest):
         """
         raise Exception("Not implemented.")
 
+    def skip_check_outputs(self) -> list:
+        """Skip check some output because some paddle's op outputs are useless, CINN will not support these.
+        ```
+        # skip check the result of output 'Out'
+        return {'Out'}
+        ```
+        """
+        return list()
+
     def __set_paddle_op(self):
         # paddle C++ op type
         self.op_type = self.set_op_type()
@@ -107,6 +116,8 @@ class OpMapperTest(OpTest):
         self.attrs = self.set_op_attrs()
         # map from output param name to output data type
         self.output_dtypes = self.set_op_outputs()
+        # list of outputs which will be skip
+        self.skip_outputs = self.skip_check_outputs()
         # collect some important infomation
         self.input_arg_map = self.__get_arguments_map(self.inputs)
         self.fetch_targets = list()
@@ -177,7 +188,19 @@ class OpMapperTest(OpTest):
         self.__set_paddle_op()
         self.__check_valid()
 
+    def debug_info(self, info_dict: dict, title: str):
+        if logger.isEnabledFor(logging.DEBUG):
+            debug_info = ""
+            for k, v in info_dict.items():
+                debug_info += k + ", shape=" + str(v.shape) + ", dtype=" + str(
+                    v.dtype) + ":\n"
+                debug_info += str(v) + "\n"
+
+            logger.debug(title + ":\n" + debug_info)
+
     def build_paddle_program(self, target):
+        self.debug_info(self.feed_data, "Feed Data")
+
         main_program = paddle.static.Program()
         startup_program = paddle.static.Program()
         with paddle.static.program_guard(main_program, startup_program):
@@ -195,7 +218,9 @@ class OpMapperTest(OpTest):
                 self.outputs[var_name] = list()
                 for dtype in dtypes:
                     out_var = helper.create_variable_for_type_inference(dtype)
-                    self.fetch_targets.append(out_var)
+                    if var_name not in self.skip_outputs:
+                        # skip obtain the result in skip_outputs
+                        self.fetch_targets.append(out_var)
                     self.outputs[var_name].append(out_var)
 
             self.op_desc = helper.append_op(
@@ -209,15 +234,13 @@ class OpMapperTest(OpTest):
         exe = paddle.static.Executor(self.place)
         exe.run(startup_program)
 
-        logger.debug("Feed list:\n" + str(self.feed_data))
-
         self.paddle_outputs = exe.run(
             main_program, self.feed_data, fetch_list=self.fetch_targets)
 
-        logger.debug("Paddle result:\n" +
-                     str([{
-                         self.fetch_targets[i].name: self.paddle_outputs[i]
-                     } for i in range(len(self.fetch_targets))]))
+        self.debug_info({
+            self.fetch_targets[i].name: self.paddle_outputs[i]
+            for i in range(len(self.fetch_targets))
+        }, "Paddle result")
 
     def build_cinn_program(self, target):
         scope = Scope()
@@ -276,10 +299,11 @@ class OpMapperTest(OpTest):
             passes=list(),
             scope=scope)
 
-        logger.debug("CINN result:\n" + str([{
-            self.fetch_targets[i].name + "/" + convertor.get_cinn_name(self.fetch_targets[i].name):
-            self.cinn_outputs[i]
-        } for i in range(len(self.fetch_targets))]))
+        self.debug_info({
+            self.fetch_targets[i].name + "/" + convertor.get_cinn_name(
+                self.fetch_targets[i].name): self.cinn_outputs[i]
+            for i in range(len(self.fetch_targets))
+        }, "CINN result")
 
     @staticmethod
     def paddleddtype2nptype(dtype):
