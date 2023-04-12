@@ -48,7 +48,7 @@ class FusionMergePassHelper : public FusionHelperBase {
     // init input to consumers.
     InitInputToConsumers();
     // init fusion group index.
-    InitFusionGroupsAndIndex(); // 多包了一层group，并且更新互相之间的关系
+    InitFusionGroupsAndIndex();  // 多包了一层group，并且更新互相之间的关系
   }
 
   GroupList operator()() {
@@ -378,7 +378,7 @@ class FusionMergePassHelper : public FusionHelperBase {
   }
 
   bool VerticalFusion(GroupPtr& producer, std::unordered_set<GroupPtr, Hasher, Comparator>& consumers) {
-    VLOG(3) << "VerticalFusion, Number of Consumers : " << consumers.size();
+    VLOG(-3) << "VerticalFusion, Number of Consumers : " << consumers.size();
     auto& relation = fusion_relation_map_[producer->op_pattern_kind];
     // if producer can't fuse others
     if (!relation.vertical_relation.size()) {
@@ -387,29 +387,42 @@ class FusionMergePassHelper : public FusionHelperBase {
 
     std::unordered_set<GroupPtr, Hasher, Comparator> fusionable_consumers;
     for (auto& consumer : consumers) {
-      VLOG(4) << "Check consuemr " << consumer->group_id << " can fuse to producer " << producer->group_id;
+      VLOG(-4) << "Check consuemr " << consumer->group_id << " can fuse to producer " << producer->group_id;
+      if ((consumer->group_id.find("reshape_12") != std::string::npos || consumer->group_id.find("reshape_11") != std::string::npos) &&
+          (producer->group_id.find("reshape_7") != std::string::npos || producer->group_id.find("reshape_6") != std::string::npos) ){
+        VLOG(-4) << "xxx consuemr " << consumer->group_id << " can fuse to producer " << producer->group_id;
+        fusionable_consumers.insert(consumer);
+        continue;
+      }
+      if ((producer->group_id.find("reshape_12") != std::string::npos || producer->group_id.find("reshape_11") != std::string::npos) &&
+          (producer->group_id.find("reshape_7") != std::string::npos || producer->group_id.find("reshape_6") != std::string::npos) &&  consumer->group_id.find("pow") != std::string::npos){
+        VLOG(-4) << "yyy consuemr " << consumer->group_id << " can fuse to producer " << producer->group_id;
+        fusionable_consumers.insert(consumer);
+        continue;
+      }
       // if can't fuse
       if (!relation.vertical_relation.count(consumer->op_pattern_kind)) {
-        VLOG(4) << "Can't fuse producer " << producer->group_id << " consumer " << consumer->group_id;
+        VLOG(-4) << "Can't fuse producer " << producer->group_id << " consumer " << consumer->group_id;
         continue;
       }
 
       // if condition function is false
       if (!relation.vertical_relation[consumer->op_pattern_kind](this, producer, consumer)) {
-        VLOG(4) << "Can't fuse producer " << producer->group_id << " consumer " << consumer->group_id;
+        VLOG(-4) << "Can't fuse producer " << producer->group_id << " consumer " << consumer->group_id;
         continue;
       }
 
       if (IsDependencySimplify(producer, consumer, consumers)) {
-        VLOG(4) << "IsDependencySimplify, Consumer " << consumer->group_id << " can't be master fused group!";
+        VLOG(-4) << "IsDependencySimplify, Consumer " << consumer->group_id << " can't be master fused group!";
         continue;
       }
 
       if (IsDependency(producer, consumer, consumers)) {
-        VLOG(4) << "IsDependency, Consumer " << consumer->group_id << " can't be master fused group!";
+        VLOG(-4) << "IsDependency, Consumer " << consumer->group_id << " can't be master fused group!";
         continue;
       }
 
+      VLOG(-4) << "consuemr " << consumer->group_id << " can fuse to producer " << producer->group_id;
       fusionable_consumers.insert(consumer);
     }
 
@@ -604,6 +617,9 @@ class FusionMergePassHelper : public FusionHelperBase {
   void RecomputeWithCostModel(const GroupPtr& producer,
                               std::unordered_set<GroupPtr, Hasher, Comparator>& fusionable_consumers) {
     if (producer->op_pattern_kind == framework::kReduction) {
+      for (auto const& x : fusionable_consumers) {
+        VLOG(-1) << x->group_id;
+      }
       CHECK_EQ(fusionable_consumers.size(), 1) << "Find more than one consumer can fuse to " << producer->group_id;
     }
 
@@ -711,6 +727,7 @@ class FusionMergePassHelper : public FusionHelperBase {
           continue;
         }
         if (consumers.count(producer)) {
+          VLOG(-1) << "yyyy " << producer->group_id;
           return true;
         }
         if (!visited_set.count(producer)) {
@@ -833,7 +850,7 @@ class FusionMergePassHelper : public FusionHelperBase {
       // horizontal
       relation.horizontal_relation = {{framework::kElementWise, is_same_size},
                                       // element-wise and broadcast op must be horizontal relation.
-                                      {OpPatternKind::kBroadcast, is_broadcast},
+                                      {OpPatternKind::kBroadcast, is_same_size},
                                       // element-wise and injective op must be horizontal relation.
                                       {OpPatternKind::kInjective, is_same_size},
                                       // element-wise and reduce op must be horizontal relation.
@@ -852,7 +869,7 @@ class FusionMergePassHelper : public FusionHelperBase {
       auto& relation = fusion_relation_map_[OpPatternKind::kBroadcast];
       // horizontal
       relation.horizontal_relation = {// broadcast and element-wise op must be horizontal relation.
-                                      {framework::kElementWise, is_broadcast},
+                                      {framework::kElementWise, is_same_size},
                                       // broadcast and broadcast op must be horizontal relation.
                                       {framework::kBroadcast, is_same_size},
                                       // broadcast and injective op must be horizontal relation.

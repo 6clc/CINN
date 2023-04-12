@@ -47,6 +47,7 @@ class OpFusionPassHelper : public FusionHelperBase {
     for (auto graph_node : nodes_inorder) {
       auto node = graph_node->safe_as<Node>();
       if (node) {
+        VLOG(-1) << "xxx" << node->id();
         nodes_.push_back(node);
         auto group = std::make_shared<Graph::Group>();
         // init group
@@ -122,6 +123,7 @@ class OpFusionPassHelper : public FusionHelperBase {
  private:
   void DoOpFusion() {
     for (auto consumer : nodes_) {
+      VLOG(-1) << "xxxy" << consumer->id();
       // kNonFusible op can't fuse any other op.
       if (GetOpKind(consumer) == framework::kNonFusible) {
         continue;
@@ -150,11 +152,14 @@ class OpFusionPassHelper : public FusionHelperBase {
         if (GetOpKind(producer) == framework::kNonFusible) {
           continue;
         }
-        VLOG(3) << "Producer Op: " << producer->id() << ", Op Pattern: " << GetOpKind(producer)
+        VLOG(-3) << "Producer Op: " << producer->id() << ", Op Pattern: " << GetOpKind(producer)
                 << " -> Consumer Op: " << consumer->id() << ", Op Pattern: " << GetOpKind(consumer);
         bool can_fuse = true;
         // checkout producer node outputs are all in fusion op
         for (auto& link : producer_data->outlinks()) {
+          if(consumer->id() == "reshape_6") break;
+          if(consumer->id() == "reshape_7") break;
+          if(consumer->id() == "reshape_11") break;
           auto consumer_node = link->sink()->safe_as<Node>();
           CHECK(consumer_node);
           // if fusion group can't find node, can't merge
@@ -165,7 +170,7 @@ class OpFusionPassHelper : public FusionHelperBase {
         }
 
         if (!can_fuse || !CanFuse(producer, consumer)) continue;
-        VLOG(3) << "Fuse Op " << producer->id() << " into Op " << consumer->id();
+        VLOG(-3) << "Fuse Op " << producer->id() << " into Op " << consumer->id();
 
         // fuse producer to fusion group
         consumer_fusion->group_id = producer->id() + "_" + consumer_fusion->group_id;
@@ -328,7 +333,14 @@ class OpFusionPassHelper : public FusionHelperBase {
       // second step: check producer can be fused into consumer group
       VLOG(3) << "Call ConditionFunction, Producer Op Pattern : " << GetOpKind(producer)
               << " , Consumer Group Pattern : " << consumer_group->op_pattern_kind;
-      return relation.fusion_op_kind[consumer_group->op_pattern_kind](this, producer, fusion_groups_[consumer]);
+      if( relation.fusion_op_kind[consumer_group->op_pattern_kind](this, producer, fusion_groups_[consumer])){
+        VLOG(-1) << "op fusion consumer " << consumer_group->group_id << " : producer id " << producer->id();
+        return true;
+
+      }else{
+        VLOG(-1) << "op cannot fusion consumer " << consumer_group->group_id << " : producer id " << producer->id();
+        return false;
+      }
     }
 
     return false;

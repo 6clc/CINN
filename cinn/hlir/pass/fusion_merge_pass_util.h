@@ -79,7 +79,7 @@ CONDITION_FUNC(is_broadcast) {
     return true;
   }
 
-  auto is_broadcast_to = [](shape_t shape_0, shape_t shape_1) -> bool{
+  auto is_broadcast_to = [](shape_t shape_0, shape_t shape_1) -> bool {
     for (auto i = 0; i < shape_0.size(); ++i) {
       bool found_dim = false;
       for (auto j = i; j < shape_1.size(); ++j) {
@@ -307,6 +307,7 @@ CONDITION_FUNC(injective_horizontal_with_reduce) {
 }
 
 CONDITION_FUNC(reduce_fuse_broadcast) {
+  VLOG(-1) << "xxx";
   if (is_same_size(helper, first, second)) {
     return true;
   }
@@ -321,8 +322,8 @@ CONDITION_FUNC(reduce_fuse_broadcast) {
   CHECK(reducer) << "Can't find reduce op in group " << first->group_id;
 
   auto reducer_input_shape = helper->GetNodeInputShape(reducer);
-  auto reduce_axes  = absl::get<std::vector<int>>(reducer->attrs.attr_store.at("dim"));
-  auto keep_dim     = absl::get<bool>(reducer->attrs.attr_store.at("keep_dim"));
+  auto reduce_axes         = absl::get<std::vector<int>>(reducer->attrs.attr_store.at("dim"));
+  auto keep_dim            = absl::get<bool>(reducer->attrs.attr_store.at("keep_dim"));
   for (auto& axis : reduce_axes) {
     if (axis == -1) {
       axis = reducer_input_shape.size() - 1;
@@ -338,6 +339,7 @@ CONDITION_FUNC(reduce_fuse_broadcast) {
   }
 
   if (reduce_size > helper->target_.max_num_threads()) {
+      VLOG(-1) << "xxx";
     return false;
   }
 
@@ -347,9 +349,9 @@ CONDITION_FUNC(reduce_fuse_broadcast) {
     if (helper->GetOpKind(node) != OpPatternKind::kBroadcast) {
       continue;
     }
-    Node* broadcaster = node;
+    Node* broadcaster             = node;
     auto broadcaster_output_shape = absl::get<std::vector<int>>(broadcaster->attrs.attr_store.at("out_shape"));
-    auto broadcast_axes  = absl::get<std::vector<int>>(broadcaster->attrs.attr_store.at("broadcast_axes"));
+    auto broadcast_axes           = absl::get<std::vector<int>>(broadcaster->attrs.attr_store.at("broadcast_axes"));
     for (auto& axis : broadcast_axes) {
       if (axis == -1) {
         axis = broadcaster_output_shape.size() - 1;
