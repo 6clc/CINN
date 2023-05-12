@@ -16,6 +16,9 @@
 
 #include <gflags/gflags.h>
 #include <glog/logging.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
 
 #include <unordered_set>
 
@@ -208,5 +211,9 @@ void CurrentTarget::SetCurrentTarget(const common::Target& target) {
 
 common::Target& CurrentTarget::GetCurrentTarget() { return target_; }
 
+bool CanUseNvccCompiler() {
+  std::string nvcc_dir = "/usr/local/cuda/bin/nvcc";
+  return access(nvcc_dir.c_str(), 0) == -1 ? false : true;
+}
 }  // namespace runtime
 }  // namespace cinn
